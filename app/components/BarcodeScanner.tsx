@@ -23,18 +23,49 @@ export default function BarcodeScanner() {
   const [lastScan, setLastScan] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [paused, setPaused] = useState(false)
+  const [permissionState, setPermissionState] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
   const counterRef = useRef(0)
   const lastValueRef = useRef<string>('')
   const pauseRef = useRef(false)
 
-  // Load available cameras
+  // Request permission then enumerate cameras
+  const requestPermissionAndLoadCameras = useCallback(async () => {
+    setPermissionState('requesting')
+    setError(null)
+    try {
+      // getUserMedia triggers the browser permission prompt
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      // Stop immediately — we only needed the prompt
+      stream.getTracks().forEach((t) => t.stop())
+      setPermissionState('granted')
+      const devices = await BrowserMultiFormatReader.listVideoInputDevices()
+      setCameras(devices)
+      if (devices.length > 0) setSelectedCamera(devices[0].deviceId)
+    } catch (e: unknown) {
+      setPermissionState('denied')
+      const msg = e instanceof Error ? e.message : String(e)
+      if (msg.includes('Permission denied') || msg.includes('NotAllowedError')) {
+        setError('Camera access was denied. Please allow camera access in your browser settings and try again.')
+      } else {
+        setError(`Could not access camera: ${msg}`)
+      }
+    }
+  }, [])
+
+  // Try silent enumeration on mount (works if permission was already granted)
   useEffect(() => {
+    if (!navigator.mediaDevices) return
     BrowserMultiFormatReader.listVideoInputDevices()
       .then((devices) => {
-        setCameras(devices)
-        if (devices.length > 0) setSelectedCamera(devices[0].deviceId)
+        // Browsers return devices with empty labels when permission is not yet granted
+        const hasRealDevices = devices.some((d) => d.deviceId && d.deviceId !== '')
+        if (hasRealDevices) {
+          setCameras(devices)
+          setSelectedCamera(devices[0].deviceId)
+          setPermissionState('granted')
+        }
       })
-      .catch(() => setError('Could not access camera list. Please allow camera permissions.'))
+      .catch(() => {/* will ask on click */})
   }, [])
 
   const stopScanner = useCallback(() => {
@@ -46,21 +77,33 @@ export default function BarcodeScanner() {
   }, [])
 
   const startScanner = useCallback(async () => {
-    if (!videoRef.current || !selectedCamera) return
+    if (!videoRef.current) return
     setError(null)
     lastValueRef.current = ''
+
+    // If we don't have camera access yet, request it first
+    if (permissionState !== 'granted' || cameras.length === 0) {
+      await requestPermissionAndLoadCameras()
+      // startScanner will be called again once cameras are loaded via the button
+      return
+    }
+
+    const deviceId = selectedCamera || cameras[0]?.deviceId
+    if (!deviceId) {
+      setError('No camera found on this device.')
+      return
+    }
 
     try {
       readerRef.current = new BrowserMultiFormatReader()
       const controls = await readerRef.current.decodeFromVideoDevice(
-        selectedCamera,
+        deviceId,
         videoRef.current,
         (result, err) => {
           if (pauseRef.current) return
           if (result) {
             const value = result.getText()
             const format = result.getBarcodeFormat().toString()
-            // Debounce: skip if same value scanned within ~1.5 s
             if (value === lastValueRef.current) return
             lastValueRef.current = value
             setTimeout(() => { lastValueRef.current = '' }, 1500)
@@ -82,7 +125,7 @@ export default function BarcodeScanner() {
       const msg = e instanceof Error ? e.message : String(e)
       setError(`Camera error: ${msg}`)
     }
-  }, [selectedCamera])
+  }, [selectedCamera, cameras, permissionState, requestPermissionAndLoadCameras])
 
   const togglePause = () => {
     pauseRef.current = !pauseRef.current
@@ -139,7 +182,7 @@ export default function BarcodeScanner() {
               className="input bg-white"
             >
               {cameras.length === 0
-                ? <option value="">No cameras found</option>
+                ? <option value="">{permissionState === 'granted' ? 'No cameras found' : 'Click Start Scanning to allow access'}</option>
                 : cameras.map((cam, idx) => (
                     <option key={cam.deviceId || `cam-${idx}`} value={cam.deviceId}>
                       {cam.label || `Camera ${idx + 1}`}
@@ -156,16 +199,24 @@ export default function BarcodeScanner() {
             {!scanning ? (
               <button
                 onClick={startScanner}
-                disabled={!selectedCamera}
-                className="px-5 py-2.5 rounded-lg text-white text-sm font-semibold disabled:opacity-50"
+                disabled={permissionState === 'requesting'}
+                className="px-5 py-2.5 rounded-lg text-white text-sm font-semibold disabled:opacity-60"
                 style={{
-                  background: 'linear-gradient(135deg,#22c55e,#16a34a)',
+                  background: permissionState === 'denied'
+                    ? 'linear-gradient(135deg,#ef4444,#dc2626)'
+                    : 'linear-gradient(135deg,#22c55e,#16a34a)',
                   boxShadow: '0 2px 8px rgba(34,197,94,0.35)',
-                  cursor: selectedCamera ? 'pointer' : 'not-allowed',
+                  cursor: permissionState === 'requesting' ? 'not-allowed' : 'pointer',
                   whiteSpace: 'nowrap',
                 }}
               >
-                Start Scanning
+                {permissionState === 'requesting'
+                  ? 'Requesting…'
+                  : permissionState === 'denied'
+                    ? 'Retry Access'
+                    : permissionState === 'granted' && cameras.length === 0
+                      ? 'No Camera Found'
+                      : 'Start Scanning'}
               </button>
             ) : (
               <div className="flex gap-2">
