@@ -72,7 +72,7 @@ function triggerDownload(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 200)
 }
 
-export default function BarcodeGenerator() {
+export default function BarcodeGenerator({ hideHeader }: { hideHeader?: boolean }) {
   const [prefix, setPrefix] = useState('CERT')
   const [startNumber, setStartNumber] = useState(1)
   const [count, setCount] = useState(10)
@@ -165,39 +165,8 @@ export default function BarcodeGenerator() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)' }}>
-      {/* ── Header ─────────────────────────────────────────── */}
-      <header className="bg-white border-b border-slate-200" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center gap-3">
-          <div
-            className="flex items-center justify-center rounded-xl flex-shrink-0"
-            style={{
-              width: 44, height: 44,
-              background: 'linear-gradient(135deg,#3b82f6,#6366f1)',
-            }}
-          >
-            {/* Barcode icon */}
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-              <rect x="1"   y="4" width="3"   height="16" rx="0.4" />
-              <rect x="6"   y="4" width="1.5" height="16" rx="0.4" />
-              <rect x="9"   y="4" width="2.5" height="16" rx="0.4" />
-              <rect x="13.5" y="4" width="1" height="16" rx="0.4" />
-              <rect x="16"  y="4" width="3"   height="16" rx="0.4" />
-              <rect x="21"  y="4" width="2"   height="16" rx="0.4" />
-            </svg>
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 leading-tight">
-              Certificate Barcode Generator
-            </h1>
-            <p className="text-sm text-slate-500 leading-tight">
-              Generate unique sequential barcodes for student certificates
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+    <div>
+      <div className="space-y-8">
         {/* ── Config card ────────────────────────────────────── */}
         <div
           className="bg-white rounded-2xl p-7"
@@ -382,7 +351,7 @@ export default function BarcodeGenerator() {
             )}
           </div>
         )}
-      </main>
+      </div>
 
       {/* Global input style injected via a style tag */}
       <style>{`
